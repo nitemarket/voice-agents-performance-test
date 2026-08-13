@@ -1,0 +1,183 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #0f1117;
+  color: #e6e8ee;
+}
+
+.app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 1.4rem;
+  margin-bottom: 1.5rem;
+}
+
+.pickers {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.picker {
+  display: grid;
+  grid-template-columns: 8.5rem 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.picker-label {
+  font-size: 0.85rem;
+  color: #9aa0ae;
+}
+
+select {
+  background: #1a1d26;
+  color: inherit;
+  border: 1px solid #2c313e;
+  border-radius: 6px;
+  padding: 0.45rem 0.5rem;
+  font-size: 0.9rem;
+}
+
+select:disabled {
+  opacity: 0.5;
+}
+
+.widget {
+  text-align: center;
+  padding: 1.5rem 0;
+  border-top: 1px solid #232733;
+  border-bottom: 1px solid #232733;
+  margin-bottom: 1.5rem;
+}
+
+.mic-button {
+  font-size: 1.05rem;
+  padding: 0.9rem 2.2rem;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  background: #3b82f6;
+  color: white;
+  transition: background 0.15s;
+}
+
+.mic-button:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.mic-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.mic-button.recording {
+  background: #dc2626;
+  animation: pulse 1.2s infinite;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 10px rgba(220, 38, 38, 0.15);
+  }
+}
+
+.stages {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.stage-badge {
+  font-size: 0.8rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: #1a1d26;
+  border: 1px solid #2c313e;
+  color: #9aa0ae;
+}
+
+.stage-badge.active {
+  border-color: #3b82f6;
+  color: #e6e8ee;
+}
+
+.timing {
+  color: #4ade80;
+}
+
+.timing-upstream {
+  color: #6b7280;
+}
+
+.error {
+  color: #f87171;
+  font-size: 0.9rem;
+  margin-top: 1rem;
+}
+
+.transcript-empty {
+  color: #6b7280;
+  text-align: center;
+}
+
+.transcript-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.transcript-header h2 {
+  font-size: 1rem;
+  color: #9aa0ae;
+}
+
+.reset {
+  background: none;
+  border: 1px solid #2c313e;
+  color: #9aa0ae;
+  border-radius: 6px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.reset:hover {
+  color: #e6e8ee;
+}
+
+.turn {
+  margin-bottom: 0.9rem;
+}
+
+.turn-role {
+  display: block;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+  margin-bottom: 0.15rem;
+}
+
+.turn-user .turn-role {
+  color: #60a5fa;
+}
+
+.turn-assistant .turn-role {
+  color: #4ade80;
+}
+
+.turn p {
+  margin: 0;
+  line-height: 1.5;
+}
