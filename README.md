@@ -1,8 +1,12 @@
 # Voice Agent Lab
 
-A prototype for comparing voice-agent quality across model providers. The pipeline is
-**mic → speech-to-text → LLM → text-to-speech → playback**, and each stage can be switched
-independently between providers (currently OpenAI and xAI Grok) to compare quality and latency.
+A prototype for comparing voice-agent quality across model providers. Two modes, each on its
+own tab:
+
+- **Pipeline** — **mic → speech-to-text → LLM → text-to-speech → playback**, with each stage
+  independently switchable between providers to compare quality and latency.
+- **Speech to Speech** — hands-free realtime conversation against native speech-to-speech
+  models (OpenAI Realtime, Gemini Live, Grok Voice), with live transcripts and barge-in.
 
 ## Structure
 
@@ -50,6 +54,14 @@ one of `OPENAI_API_KEY` / `XAI_API_KEY`. Note: `.env` is only read at server sta
 | `POST /api/stt` | multipart: `audio`, `provider`, `option` | `{ text, ms }` |
 | `POST /api/llm` | JSON: `{ messages, provider, option }` | `{ text, ms }` |
 | `POST /api/tts` | JSON: `{ text, provider, option }` | audio bytes (`X-Upstream-Ms` header) |
+| `GET /api/sts/providers` | — | catalog of configured realtime (speech-to-speech) providers |
+| `GET /api/sts` (WebSocket) | query: `provider`, `model` | bidirectional JSON: `{type:"audio", data:<b64 pcm16>}` up; `ready`/`audio`/`interrupted`/`transcript`/`error`/`closed` down |
+
+The STS WebSocket is a server-side proxy: the browser streams mic PCM to our server, which
+bridges to the provider's realtime API (OpenAI Realtime protocol for OpenAI and xAI via one
+shared adapter, Gemini Live protocol for Gemini) with the API key injected server-side.
+Adapters live in `server/src/providers/realtime/`; add one file + a registry entry for a new
+realtime provider. Ephemeral-token/WebRTC direct connection is not implemented (out of scope).
 
 `ms` / `X-Upstream-Ms` is the server-measured upstream provider latency; the UI also shows the
 client-measured total per stage.

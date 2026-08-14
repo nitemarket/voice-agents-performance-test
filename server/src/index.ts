@@ -4,6 +4,7 @@ import { providersRoute } from "./routes/providers";
 import { sttRoute } from "./routes/stt";
 import { llmRoute } from "./routes/llm";
 import { ttsRoute } from "./routes/tts";
+import { stsRoute, stsWebsocket } from "./routes/sts";
 
 const app = new Hono();
 
@@ -12,6 +13,7 @@ app.route("/api", providersRoute);
 app.route("/api", sttRoute);
 app.route("/api", llmRoute);
 app.route("/api", ttsRoute);
+app.route("/api", stsRoute);
 
 app.onError((err, c) => {
   console.error(err);
@@ -20,4 +22,4 @@ app.onError((err, c) => {
 
 console.log("API server listening on http://localhost:8787");
 
-export default { port: 8787, fetch: app.fetch };
+export default { port: 8787, fetch: app.fetch, websocket: stsWebsocket };

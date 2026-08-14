@@ -12,7 +12,40 @@ body {
 .app {
   max-width: 640px;
   margin: 0 auto;
-  padding: 2rem 1.25rem 4rem;
+  padding: 1rem 1.25rem 4rem;
+}
+
+.tabs {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 0;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tab {
+  background: none;
+  border: 1px solid #2c313e;
+  color: #9aa0ae;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.tab.active {
+  background: #1a1d26;
+  border-color: #3b82f6;
+  color: #e6e8ee;
+}
+
+.mute-toggle {
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.mute-toggle:hover {
+  color: #e6e8ee;
 }
 
 h1 {
