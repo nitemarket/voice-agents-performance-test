@@ -12,6 +12,13 @@ interface StsProvider {
 
 type Status = "idle" | "connecting" | "live";
 
+interface ToolCall {
+  callId: string;
+  name: string;
+  status: "running" | "done";
+  args?: string;
+}
+
 export default function StsPage() {
   const [catalog, setCatalog] = useState<StsProvider[] | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -20,6 +27,8 @@ export default function StsPage() {
   const [muted, setMuted] = useState(false);
   const [turns, setTurns] = useState<ChatMessage[]>([]);
   const [partial, setPartial] = useState<{ user?: string; agent?: string }>({});
+  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [toolNames, setToolNames] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const conn = useRef<StsConnection | null>(null);
@@ -55,6 +64,7 @@ export default function StsPage() {
   function handleMessage(msg: StsServerMsg) {
     switch (msg.type) {
       case "ready": {
+        setToolNames(msg.tools);
         player.current = new StreamPlayer(msg.outputRate);
         const m = new MicStream();
         mic.current = m;
@@ -84,6 +94,17 @@ export default function StsPage() {
           setPartial((p) => ({ ...p, [msg.role]: msg.text }));
         }
         break;
+      case "tool":
+        setToolCalls((calls) => {
+          const existing = calls.find((c) => c.callId === msg.callId);
+          if (existing) {
+            return calls.map((c) =>
+              c.callId === msg.callId ? { ...c, status: msg.status } : c,
+            );
+          }
+          return [...calls, { callId: msg.callId, name: msg.name, status: msg.status, args: msg.args }];
+        });
+        break;
       case "error":
         setError(msg.message);
         disconnect();
@@ -97,6 +118,7 @@ export default function StsPage() {
   function connect() {
     if (!selection) return;
     setError(null);
+    setToolCalls([]);
     setStatus("connecting");
     conn.current = connectSts(selection.provider, selection.model, handleMessage, () => {
       if (conn.current) disconnect();
@@ -199,10 +221,35 @@ export default function StsPage() {
             </button>
           )}
         </div>
+        {status === "live" && toolNames.length > 0 && (
+          <p className="tool-names">Tools available: {toolNames.join(", ")}</p>
+        )}
         {error && <p className="error">{error}</p>}
       </div>
 
-      <Transcript messages={displayTurns} onReset={() => setTurns([])} />
+      {toolCalls.length > 0 && (
+        <div className="tool-log">
+          <h2>Tool activity</h2>
+          {toolCalls.map((call) => (
+            <div key={call.callId} className="tool-entry">
+              <span className={`tool-status ${call.status}`}>
+                {call.status === "running" ? "⏳" : "✓"}
+              </span>
+              <code>
+                {call.name}({call.args ? call.args.slice(0, 80) : ""})
+              </code>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Transcript
+        messages={displayTurns}
+        onReset={() => {
+          setTurns([]);
+          setToolCalls([]);
+        }}
+      />
     </main>
   );
 }

@@ -48,6 +48,49 @@ body {
   color: #e6e8ee;
 }
 
+.tool-names {
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: #6b7280;
+}
+
+.tool-log {
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1rem;
+  background: #14161d;
+  border: 1px solid #232733;
+  border-radius: 8px;
+}
+
+.tool-log h2 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6b7280;
+}
+
+.tool-entry {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  font-size: 0.8rem;
+  margin-bottom: 0.3rem;
+}
+
+.tool-entry code {
+  color: #c4b5fd;
+  word-break: break-all;
+}
+
+.tool-status.running {
+  color: #fbbf24;
+}
+
+.tool-status.done {
+  color: #4ade80;
+}
+
 h1 {
   font-size: 1.4rem;
   margin-bottom: 1.5rem;

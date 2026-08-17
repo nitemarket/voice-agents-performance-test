@@ -1,8 +1,9 @@
 export type StsServerMsg =
-  | { type: "ready"; inputRate: number; outputRate: number }
+  | { type: "ready"; inputRate: number; outputRate: number; tools: string[] }
   | { type: "audio"; data: string }
   | { type: "interrupted" }
   | { type: "transcript"; role: "user" | "agent"; text: string; final: boolean }
+  | { type: "tool"; callId: string; name: string; status: "running" | "done"; args?: string }
   | { type: "error"; message: string }
   | { type: "closed" };
 

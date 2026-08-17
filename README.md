@@ -6,7 +6,13 @@ own tab:
 - **Pipeline** — **mic → speech-to-text → LLM → text-to-speech → playback**, with each stage
   independently switchable between providers to compare quality and latency.
 - **Speech to Speech** — hands-free realtime conversation against native speech-to-speech
-  models (OpenAI Realtime, Gemini Live, Grok Voice), with live transcripts and barge-in.
+  models (OpenAI Realtime, Gemini Live, Grok Voice), with live transcripts, barge-in, and
+  **tool calling**: the agent plays phone support for a demo store and can call
+  `get_order_status` (mock orders API), `search_knowledge_base` (RAG-lite over store
+  policies), and `web_search` (Tavily; only offered when `TAVILY_API_KEY` is set). Tool
+  invocations appear live in a "Tool activity" panel so you can compare how each model
+  decides to use tools. Demo order numbers: 1001, 1002, 1003. Tools live in
+  `server/src/tools/` — one file per tool plus a registry entry, executed server-side.
 
 ## Structure
 

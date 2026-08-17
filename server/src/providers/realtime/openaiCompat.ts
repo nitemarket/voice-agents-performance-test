@@ -13,7 +13,7 @@ export function compatRealtime(cfg: () => CompatRealtimeConfig): RealtimeAdapter
   return {
     inputRate: 24000,
     outputRate: 24000,
-    createSession({ model, instructions, client }) {
+    createSession({ model, instructions, tools, client }) {
       const { url, apiKey, transcriptionModel } = cfg();
       const ws = new WebSocket(`${url}?model=${encodeURIComponent(model)}`, {
         // Bun extension: custom headers on client WebSockets.
@@ -22,6 +22,31 @@ export function compatRealtime(cfg: () => CompatRealtimeConfig): RealtimeAdapter
 
       let agentText = "";
       let opened = false;
+
+      const runTool = async (item: { name?: string; call_id?: string; arguments?: string }) => {
+        const name = item.name ?? "";
+        const callId = item.call_id ?? "";
+        const tool = tools.find((t) => t.name === name);
+        client({ type: "tool", callId, name, status: "running", args: item.arguments });
+        let output: unknown;
+        try {
+          output = tool
+            ? await tool.execute(JSON.parse(item.arguments || "{}"))
+            : { error: `Unknown tool: ${name}` };
+        } catch (err) {
+          output = { error: err instanceof Error ? err.message : String(err) };
+        }
+        client({ type: "tool", callId, name, status: "done" });
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send(
+          JSON.stringify({
+            type: "conversation.item.create",
+            item: { type: "function_call_output", call_id: callId, output: JSON.stringify(output) },
+          }),
+        );
+        // Ask the model to continue speaking with the tool result.
+        ws.send(JSON.stringify({ type: "response.create" }));
+      };
 
       const handle = (raw: unknown) => {
         let event: any;
@@ -72,6 +97,12 @@ export function compatRealtime(cfg: () => CompatRealtimeConfig): RealtimeAdapter
               });
             }
             break;
+          // Tool calls arrive as completed function_call output items
+          case "response.output_item.done":
+            if (event.item?.type === "function_call") {
+              void runTool(event.item);
+            }
+            break;
           case "error":
             client({ type: "error", message: event.error?.message ?? "Realtime API error" });
             break;
@@ -82,6 +113,14 @@ export function compatRealtime(cfg: () => CompatRealtimeConfig): RealtimeAdapter
         ws.addEventListener("open", () => {
           opened = true;
           const session: Record<string, unknown> = { type: "realtime", instructions };
+          if (tools.length > 0) {
+            session.tools = tools.map(({ name, description, parameters }) => ({
+              type: "function",
+              name,
+              description,
+              parameters,
+            }));
+          }
           if (transcriptionModel) {
             session.audio = { input: { transcription: { model: transcriptionModel } } };
           }

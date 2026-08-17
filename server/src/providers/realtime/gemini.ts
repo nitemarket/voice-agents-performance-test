@@ -7,10 +7,23 @@ import type { RealtimeAdapter } from "./types";
 const GEMINI_WS_URL =
   "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent";
 
+// Gemini's Schema type uses uppercase enum values ("OBJECT", "STRING", ...).
+function toGeminiSchema(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(toGeminiSchema);
+  if (schema && typeof schema === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(schema)) {
+      out[key] = key === "type" && typeof value === "string" ? value.toUpperCase() : toGeminiSchema(value);
+    }
+    return out;
+  }
+  return schema;
+}
+
 export const geminiRealtime: RealtimeAdapter = {
   inputRate: 16000,
   outputRate: 24000,
-  createSession({ model, instructions, client }) {
+  createSession({ model, instructions, tools, client }) {
     const ws = new WebSocket(`${GEMINI_WS_URL}?key=${encodeURIComponent(config.geminiKey)}`);
 
     let userText = "";
@@ -59,6 +72,37 @@ export const geminiRealtime: RealtimeAdapter = {
           });
           return;
         }
+        if (msg.toolCall?.functionCalls) {
+          void (async () => {
+            const responses = [];
+            for (const call of msg.toolCall.functionCalls) {
+              const name: string = call.name ?? "";
+              const callId: string = call.id ?? "";
+              const tool = tools.find((t) => t.name === name);
+              client({
+                type: "tool",
+                callId,
+                name,
+                status: "running",
+                args: JSON.stringify(call.args ?? {}),
+              });
+              let result: unknown;
+              try {
+                result = tool
+                  ? await tool.execute(call.args ?? {})
+                  : { error: `Unknown tool: ${name}` };
+              } catch (err) {
+                result = { error: err instanceof Error ? err.message : String(err) };
+              }
+              client({ type: "tool", callId, name, status: "done" });
+              responses.push({ id: callId, name, response: { result } });
+            }
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ toolResponse: { functionResponses: responses } }));
+            }
+          })();
+          return;
+        }
         const content = msg.serverContent;
         if (!content) return;
         if (content.interrupted) {
@@ -97,6 +141,19 @@ export const geminiRealtime: RealtimeAdapter = {
               systemInstruction: { parts: [{ text: instructions }] },
               inputAudioTranscription: {},
               outputAudioTranscription: {},
+              ...(tools.length > 0
+                ? {
+                    tools: [
+                      {
+                        functionDeclarations: tools.map(({ name, description, parameters }) => ({
+                          name,
+                          description,
+                          parameters: toGeminiSchema(parameters),
+                        })),
+                      },
+                    ],
+                  }
+                : {}),
             },
           }),
         );
