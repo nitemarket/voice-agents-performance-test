@@ -1,4 +1,4 @@
-import { config } from "../../config";
+import { config } from "../config";
 import type { RealtimeAdapter } from "./types";
 import { compatRealtime } from "./openaiCompat";
 import { geminiRealtime } from "./gemini";

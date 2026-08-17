@@ -1,4 +1,4 @@
-import type { ToolDef } from "../../tools/types";
+import type { ToolDef } from "../tools/types";
 
 // Messages sent from our server to the browser over the STS WebSocket.
 export type ServerMsg =

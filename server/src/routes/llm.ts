@@ -1,6 +1,6 @@
 import { Hono } from "hono";
-import { resolve } from "../providers/registry";
-import type { ChatMessage } from "../providers/types";
+import { resolve } from "../pipeline/registry";
+import type { ChatMessage } from "../pipeline/types";
 
 const SYSTEM_PROMPT =
   "You are a helpful voice assistant. Keep replies concise and conversational — they will be read aloud.";

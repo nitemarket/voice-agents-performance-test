@@ -1,18 +1,10 @@
 import { config } from "../config";
 import type { LlmProvider, SttProvider, TtsProvider } from "./types";
-import { openaiStt } from "./stt/openai";
-import { xaiStt } from "./stt/xai";
-import { groqStt } from "./stt/groq";
-import { elevenlabsStt } from "./stt/elevenlabs";
-import { openaiLlm } from "./llm/openai";
-import { xaiLlm } from "./llm/xai";
-import { groqLlm } from "./llm/groq";
-import { geminiLlm } from "./llm/gemini";
-import { openaiTts } from "./tts/openai";
-import { xaiTts } from "./tts/xai";
-import { groqTts } from "./tts/groq";
-import { geminiTts } from "./tts/gemini";
-import { elevenlabsTts } from "./tts/elevenlabs";
+import { openaiLlm, openaiStt, openaiTts } from "./providers/openai";
+import { xaiLlm, xaiStt, xaiTts } from "./providers/xai";
+import { groqLlm, groqStt, groqTts } from "./providers/groq";
+import { geminiLlm, geminiTts } from "./providers/gemini";
+import { elevenlabsStt, elevenlabsTts } from "./providers/elevenlabs";
 
 export type Stage = "stt" | "llm" | "tts";
 

@@ -1,4 +1,4 @@
-import { config } from "../../config";
+import { config } from "../config";
 import type { RealtimeAdapter } from "./types";
 
 // Gemini Live API adapter. Own protocol over WebSocket:

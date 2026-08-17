@@ -1,5 +1,12 @@
 import { config } from "../../config";
+import { compatLlm } from "../openaiCompat";
 import type { TtsProvider } from "../types";
+
+// Google's official OpenAI-compatible endpoint for Gemini chat.
+export const geminiLlm = compatLlm(() => ({
+  apiKey: config.geminiKey,
+  baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+}));
 
 // Gemini TTS returns raw 16-bit mono PCM at 24 kHz (base64), so wrap it in a WAV header.
 function pcmToWav(pcm: Uint8Array, sampleRate = 24000, channels = 1, bitsPerSample = 16): ArrayBuffer {

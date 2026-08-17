@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { createBunWebSocket } from "hono/bun";
-import { resolveSts, stsCatalog } from "../providers/realtime/registry";
-import type { RealtimeSession, ServerMsg } from "../providers/realtime/types";
+import { resolveSts, stsCatalog } from "../realtime/registry";
+import type { RealtimeSession, ServerMsg } from "../realtime/types";
 import { availableTools } from "../tools/registry";
 
 const SYSTEM_PROMPT = `You are the phone support agent for Acme Outfitters, a demo outdoor-gear store. A customer is calling you.

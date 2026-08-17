@@ -16,8 +16,12 @@ own tab:
 
 ## Structure
 
-- `server/` — Bun + Hono API server. Holds provider API keys and normalizes every provider
-  behind three tiny interfaces (`SttProvider`, `LlmProvider`, `TtsProvider`).
+- `server/` — Bun + Hono API server. Holds all provider API keys. Organized by feature:
+  - `src/pipeline/` — the STT/LLM/TTS stages behind three tiny interfaces
+    (`SttProvider`, `LlmProvider`, `TtsProvider`), with one file per provider in
+    `pipeline/providers/`.
+  - `src/realtime/` — speech-to-speech adapters (`RealtimeAdapter`) and their registry.
+  - `src/tools/` — tools callable by the realtime agent, one file per tool.
 
 ## Providers
 
@@ -66,7 +70,7 @@ one of `OPENAI_API_KEY` / `XAI_API_KEY`. Note: `.env` is only read at server sta
 The STS WebSocket is a server-side proxy: the browser streams mic PCM to our server, which
 bridges to the provider's realtime API (OpenAI Realtime protocol for OpenAI and xAI via one
 shared adapter, Gemini Live protocol for Gemini) with the API key injected server-side.
-Adapters live in `server/src/providers/realtime/`; add one file + a registry entry for a new
+Adapters live in `server/src/realtime/`; add one file + a registry entry for a new
 realtime provider. Ephemeral-token/WebRTC direct connection is not implemented (out of scope).
 
 `ms` / `X-Upstream-Ms` is the server-measured upstream provider latency; the UI also shows the
@@ -74,10 +78,12 @@ client-measured total per stage.
 
 ## Adding a provider
 
-1. Create one file in `server/src/providers/<stage>/<name>.ts` implementing the stage interface
-   from [types.ts](server/src/providers/types.ts).
+1. Create (or extend) the provider's file in `server/src/pipeline/providers/<name>.ts`,
+   implementing the stage interfaces from [types.ts](server/src/pipeline/types.ts). Providers
+   with OpenAI-compatible APIs are one-liners via
+   [openaiCompat.ts](server/src/pipeline/openaiCompat.ts).
 2. Add an entry (id, label, env key, options) to
-   [registry.ts](server/src/providers/registry.ts).
+   [registry.ts](server/src/pipeline/registry.ts).
 
 The UI picks it up automatically from `GET /api/providers`. Model IDs live only in the registry,
 so bumping to newer models is a one-line change.

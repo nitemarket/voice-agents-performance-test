@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { resolve } from "../providers/registry";
+import { resolve } from "../pipeline/registry";
 
 export const sttRoute = new Hono().post("/stt", async (c) => {
   const form = await c.req.formData();

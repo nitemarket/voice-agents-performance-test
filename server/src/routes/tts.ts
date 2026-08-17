@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { resolve } from "../providers/registry";
+import { resolve } from "../pipeline/registry";
 
 export const ttsRoute = new Hono().post("/tts", async (c) => {
   const body = (await c.req.json()) as {
