@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { createBunWebSocket } from "hono/bun";
+import { upgradeWebSocket } from "hono/bun";
 import { resolveSts, stsCatalog } from "../realtime/registry";
 import type { RealtimeSession, ServerMsg } from "../realtime/types";
 import { availableTools } from "../tools/registry";
@@ -9,10 +9,6 @@ const SYSTEM_PROMPT = `You are the phone support agent for Acme Outfitters, a de
 Use your tools whenever they help: get_order_status to look up orders, search_knowledge_base before answering any policy question (returns, shipping, warranty, hours), and web_search (if available) for current outside information. Briefly tell the customer you're checking before you use a tool, e.g. "one moment, let me pull that up".
 
 Keep replies short, natural, and conversational — this is a phone call. Never read out raw JSON, URLs, or tracking numbers in full unless asked.`;
-
-const { upgradeWebSocket, websocket } = createBunWebSocket();
-
-export const stsWebsocket = websocket;
 
 export const stsRoute = new Hono()
   .get("/sts/providers", (c) => c.json(stsCatalog()))
