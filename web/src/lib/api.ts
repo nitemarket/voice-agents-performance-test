@@ -7,6 +7,8 @@ export interface ProviderInfo {
   id: string;
   label: string;
   options: StageOption[];
+  /** STT only: provider supports realtime transcription (live mode). */
+  streaming?: boolean;
 }
 
 export interface Catalog {
@@ -82,12 +84,14 @@ export async function chat(
 export async function speak(
   text: string,
   sel: Selection,
+  signal?: AbortSignal,
 ): Promise<{ audio: Blob; timing: Timing }> {
   const t0 = performance.now();
   const res = await fetch("/api/tts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, ...sel }),
+    signal,
   });
   if (!res.ok) await fail(res);
   const audio = await res.blob();

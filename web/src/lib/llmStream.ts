@@ -9,11 +9,13 @@ export type LlmStreamEvent =
 export async function* streamChat(
   messages: ChatMessage[],
   sel: Selection,
+  signal?: AbortSignal,
 ): AsyncGenerator<LlmStreamEvent> {
   const res = await fetch("/api/llm/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages, ...sel }),
+    signal,
   });
   if (!res.ok || !res.body) {
     throw new Error(`LLM stream failed: ${res.status}`);

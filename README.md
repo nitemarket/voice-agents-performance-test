@@ -8,10 +8,17 @@ inspectable text hand-offs, while native STS hears tone and responds fastest.
 
 - **Pipeline** — **mic → speech-to-text → LLM → text-to-speech → playback**, with each stage
   independently switchable between providers to compare quality and latency per stage.
-  **Streaming mode** (on by default; untick to compare against strictly-sequential stages)
-  overlaps the stages: LLM tokens stream in and complete sentences are synthesized and played
-  while the model is still generating, cutting time-to-first-audio dramatically — shown as a
-  "First audio" badge, directly comparable to the Speech to Speech tab's latency panel.
+  **Streaming mode** (on by default; untick to compare against strictly-sequential
+  push-to-talk) streams end-to-end as a **hands-free live conversation** — the mic stays
+  open, speech transcribes as you talk, a client-side VAD detects end-of-turn, the reply
+  streams through LLM → sentence-chunked TTS, and speaking over the agent **interrupts the
+  pipeline mid-flight** (in-flight LLM/TTS requests are aborted and playback flushes —
+  barge-in, like the STS tab). A Latency panel reports per-turn time-to-first-audio, directly
+  comparable to the Speech to Speech tab's. Every STT provider supports live mode: OpenAI
+  (realtime transcription API), xAI (streaming STT WebSocket), and ElevenLabs (Scribe v2
+  Realtime) stream partials as you speak; Groq has no realtime API, so its live mode uses
+  VAD-segmented batch — the turn's audio is buffered and transcribed in one fast batch call
+  at commit (~0.5s, no partials while speaking).
 - **Speech to Speech** — hands-free realtime conversation against native speech-to-speech
   models (OpenAI Realtime, Gemini Live, Grok Voice), with live transcripts, barge-in, and
   **tool calling**: the agent plays phone support for a demo store and can call
@@ -85,6 +92,7 @@ changing keys (the file watcher does not pick it up).
 | --- | --- | --- |
 | `GET /api/providers` | — | catalog of configured pipeline providers/models per stage |
 | `POST /api/stt` | multipart: `audio`, `provider`, `option` | `{ text, ms }` |
+| `GET /api/stt/stream` (WebSocket) | query: `provider`; `{type:"audio", data}` + `{type:"finalize"}` up | `ready`/`partial`/`final`/`error` down; multi-turn |
 | `POST /api/llm` | JSON: `{ messages, provider, option }` | `{ text, ms }` |
 | `POST /api/llm/stream` | JSON: `{ messages, provider, option }` | SSE: `{delta}` per token, then `{done, ms}` (or `{error}`) |
 | `POST /api/tts` | JSON: `{ text, provider, option }` | audio bytes (`X-Upstream-Ms` header) |
@@ -132,8 +140,6 @@ The UI picks all of this up from the catalogs — no frontend changes needed.
 
 ## Not yet built (deliberately)
 
-- Streaming STT in the pipeline tab (mic audio streamed to the provider while speaking) —
-  streaming currently starts at the LLM stage.
 - Telephony ingress (e.g. Twilio Media Streams bridging G.711 into the same STS WebSocket) —
   the target end product; the server-side bridge architecture is already shaped for it.
 - Ephemeral tokens / WebRTC transport for the realtime session.

@@ -1,10 +1,11 @@
 import { config } from "../config";
-import type { LlmProvider, SttProvider, TtsProvider } from "./types";
-import { openaiLlm, openaiStt, openaiTts } from "./providers/openai";
-import { xaiLlm, xaiStt, xaiTts } from "./providers/xai";
+import type { LlmProvider, SttProvider, SttStreamAdapter, TtsProvider } from "./types";
+import { openaiLlm, openaiStt, openaiSttStream, openaiTts } from "./providers/openai";
+import { xaiLlm, xaiStt, xaiSttStream, xaiTts } from "./providers/xai";
 import { groqLlm, groqStt, groqTts } from "./providers/groq";
 import { geminiLlm, geminiTts } from "./providers/gemini";
-import { elevenlabsStt, elevenlabsTts } from "./providers/elevenlabs";
+import { elevenlabsStt, elevenlabsSttStream, elevenlabsTts } from "./providers/elevenlabs";
+import { batchAsSttStream } from "./batchSttStream";
 
 export type Stage = "stt" | "llm" | "tts";
 
@@ -21,6 +22,8 @@ interface ProviderEntry<T> {
   envKey: keyof typeof config;
   impl: T;
   options: StageOption[];
+  /** STT only: realtime transcription support (adapter + the model it uses). */
+  stream?: { adapter: SttStreamAdapter; model: string };
 }
 
 // To add a provider: write one file implementing the stage interface, then add an entry here.
@@ -30,6 +33,7 @@ const stt: ProviderEntry<SttProvider>[] = [
     label: "OpenAI",
     envKey: "openaiKey",
     impl: openaiStt,
+    stream: { adapter: openaiSttStream, model: "gpt-live-transcribe" },
     options: [
       { id: "gpt-4o-transcribe", label: "GPT-4o Transcribe", model: "gpt-4o-transcribe" },
       { id: "gpt-4o-mini-transcribe", label: "GPT-4o mini Transcribe", model: "gpt-4o-mini-transcribe" },
@@ -41,6 +45,7 @@ const stt: ProviderEntry<SttProvider>[] = [
     label: "xAI Grok",
     envKey: "xaiKey",
     impl: xaiStt,
+    stream: { adapter: xaiSttStream, model: "grok-stt" },
     options: [{ id: "grok-stt", label: "Grok STT", model: "grok-stt" }],
   },
   {
@@ -48,6 +53,8 @@ const stt: ProviderEntry<SttProvider>[] = [
     label: "Groq",
     envKey: "groqKey",
     impl: groqStt,
+    // No realtime API — VAD-segmented batch: buffer the turn, one fast batch call on commit.
+    stream: { adapter: batchAsSttStream(groqStt), model: "whisper-large-v3-turbo" },
     options: [
       { id: "whisper-large-v3-turbo", label: "Whisper Large v3 Turbo", model: "whisper-large-v3-turbo" },
       { id: "whisper-large-v3", label: "Whisper Large v3", model: "whisper-large-v3" },
@@ -58,6 +65,7 @@ const stt: ProviderEntry<SttProvider>[] = [
     label: "ElevenLabs",
     envKey: "elevenKey",
     impl: elevenlabsStt,
+    stream: { adapter: elevenlabsSttStream, model: "scribe_v2_realtime" },
     options: [{ id: "scribe_v2", label: "Scribe v2", model: "scribe_v2" }],
   },
 ];
@@ -171,8 +179,21 @@ function available<T>(entries: ProviderEntry<T>[]) {
 /** Catalog of usable providers (env key present), safe to send to the client. */
 export function catalog() {
   const strip = <T,>(entries: ProviderEntry<T>[]) =>
-    available(entries).map(({ id, label, options }) => ({ id, label, options }));
+    available(entries).map(({ id, label, options, stream }) => ({
+      id,
+      label,
+      options,
+      streaming: Boolean(stream),
+    }));
   return { stt: strip(stt), llm: strip(llm), tts: strip(tts) };
+}
+
+export function resolveSttStream(providerId: string) {
+  const entry = available(stt).find((e) => e.id === providerId);
+  if (!entry?.stream) {
+    throw new Error(`Provider ${providerId} does not support streaming STT`);
+  }
+  return entry.stream;
 }
 
 export function resolve<S extends Stage>(stage: S, providerId: string, optionId: string) {

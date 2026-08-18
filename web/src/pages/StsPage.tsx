@@ -3,6 +3,7 @@ import type { ChatMessage } from "../lib/api";
 import { connectSts, type StsConnection, type StsServerMsg } from "../lib/stsClient";
 import { MicStream, StreamPlayer } from "../lib/audioStream";
 import { Transcript } from "../components/Transcript";
+import { LatencyPanel } from "../components/LatencyPanel";
 
 interface StsProvider {
   id: string;
@@ -271,26 +272,19 @@ export default function StsPage() {
         {error && <p className="error">{error}</p>}
       </div>
 
-      {latency.length > 0 && (
-        <div className="tool-log">
-          <h2>Latency</h2>
-          <p className="latency-summary">
-            First audio after you stop speaking — avg{" "}
-            {Math.round(latency.reduce((s, l) => s + l.ttfaMs, 0) / latency.length)}ms over{" "}
-            {latency.length} turn{latency.length > 1 ? "s" : ""}
-          </p>
-          {latency.slice(-5).map((l) => (
-            <div key={l.turn} className="tool-entry">
-              <span className="tool-status done">⏱</span>
-              <span>
-                Turn {l.turn}: first audio <strong>{l.ttfaMs}ms</strong>
-                {l.providerMs !== undefined && ` · provider ${l.providerMs}ms`}
-                {l.bargeMs !== undefined && ` · barge-in stop ${l.bargeMs}ms`}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
+      <LatencyPanel
+        entries={latency.map((l) => ({
+          turn: l.turn,
+          ttfaMs: l.ttfaMs,
+          detail:
+            [
+              l.providerMs !== undefined ? `provider ${l.providerMs}ms` : null,
+              l.bargeMs !== undefined ? `barge-in stop ${l.bargeMs}ms` : null,
+            ]
+              .filter(Boolean)
+              .join(" · ") || undefined,
+        }))}
+      />
 
       {toolCalls.length > 0 && (
         <div className="tool-log">
