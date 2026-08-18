@@ -48,6 +48,16 @@ body {
   color: #e6e8ee;
 }
 
+.streaming-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #9aa0ae;
+  margin-bottom: 0.25rem;
+  cursor: pointer;
+}
+
 .tool-names {
   margin-top: 0.75rem;
   font-size: 0.75rem;
@@ -89,6 +99,12 @@ body {
 
 .tool-status.done {
   color: #4ade80;
+}
+
+.latency-summary {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  color: #9aa0ae;
 }
 
 h1 {

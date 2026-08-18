@@ -59,12 +59,48 @@ function pcm16Base64ToFloat(b64: string): Float32Array<ArrayBuffer> {
   return samples;
 }
 
+export interface VadCallbacks {
+  /** User started speaking (rough, energy-based). */
+  onSpeechStart?: () => void;
+  /** User stopped speaking; ts is the performance.now() of the last voiced frame. */
+  onSpeechEnd?: (ts: number) => void;
+}
+
+// Energy-based VAD tuning: RMS above threshold = voice; speech ends after
+// HANGOVER_MS of silence. Approximate by design — used for latency metrics,
+// not turn-taking (the provider's VAD does that).
+const VAD_THRESHOLD = 0.015;
+const VAD_HANGOVER_MS = 400;
+
 export class MicStream {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
   muted = false;
+  private speaking = false;
+  private lastVoiceTs = 0;
 
-  async start(sampleRate: number, onChunk: (b64: string) => void): Promise<void> {
+  private updateVad(samples: Float32Array, vad: VadCallbacks): void {
+    let sum = 0;
+    for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
+    const rms = Math.sqrt(sum / samples.length);
+    const now = performance.now();
+    if (rms >= VAD_THRESHOLD) {
+      if (!this.speaking) {
+        this.speaking = true;
+        vad.onSpeechStart?.();
+      }
+      this.lastVoiceTs = now;
+    } else if (this.speaking && now - this.lastVoiceTs > VAD_HANGOVER_MS) {
+      this.speaking = false;
+      vad.onSpeechEnd?.(this.lastVoiceTs);
+    }
+  }
+
+  async start(
+    sampleRate: number,
+    onChunk: (b64: string) => void,
+    vad: VadCallbacks = {},
+  ): Promise<void> {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
     });
@@ -78,7 +114,9 @@ export class MicStream {
     const source = this.ctx.createMediaStreamSource(this.stream);
     const node = new AudioWorkletNode(this.ctx, "capture");
     node.port.onmessage = (e: MessageEvent<Float32Array>) => {
-      if (!this.muted) onChunk(floatToPcm16Base64(e.data));
+      if (this.muted) return;
+      this.updateVad(e.data, vad);
+      onChunk(floatToPcm16Base64(e.data));
     };
     source.connect(node);
     node.connect(this.ctx.destination); // processor emits silence; keeps the graph alive
@@ -99,6 +137,11 @@ export class StreamPlayer {
 
   constructor(sampleRate: number) {
     this.ctx = new AudioContext({ sampleRate });
+  }
+
+  /** Whether agent audio is currently playing or queued. */
+  get playing(): boolean {
+    return this.sources.size > 0;
   }
 
   push(b64: string): void {

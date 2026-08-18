@@ -4,6 +4,7 @@ export type StsServerMsg =
   | { type: "interrupted" }
   | { type: "transcript"; role: "user" | "agent"; text: string; final: boolean }
   | { type: "tool"; callId: string; name: string; status: "running" | "done"; args?: string }
+  | { type: "metric"; name: "provider_ttfa"; ms: number }
   | { type: "error"; message: string }
   | { type: "closed" };
 

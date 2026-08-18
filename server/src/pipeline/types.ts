@@ -9,6 +9,7 @@ export interface SttProvider {
 
 export interface LlmProvider {
   chat(messages: ChatMessage[], model: string): Promise<string>;
+  chatStream(messages: ChatMessage[], model: string): AsyncIterable<string>;
 }
 
 export interface TtsResult {

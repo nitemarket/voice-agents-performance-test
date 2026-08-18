@@ -89,8 +89,8 @@ const llm: ProviderEntry<LlmProvider>[] = [
     envKey: "groqKey",
     impl: groqLlm,
     options: [
-      { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", model: "llama-3.3-70b-versatile" },
       { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B", model: "openai/gpt-oss-120b" },
+      { id: "qwen/qwen3.6-27b", label: "Qwen 3.6 27B", model: "qwen/qwen3.6-27b" },
     ],
   },
   {

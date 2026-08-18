@@ -22,6 +22,7 @@ export function compatRealtime(cfg: () => CompatRealtimeConfig): RealtimeAdapter
 
       let agentText = "";
       let opened = false;
+      let speechStoppedAt = 0; // provider VAD says user stopped; 0 = already measured
 
       const runTool = async (item: { name?: string; call_id?: string; arguments?: string }) => {
         const name = item.name ?? "";
@@ -60,11 +61,22 @@ export function compatRealtime(cfg: () => CompatRealtimeConfig): RealtimeAdapter
           // Agent audio (GA and legacy event names)
           case "response.output_audio.delta":
           case "response.audio.delta":
+            if (speechStoppedAt) {
+              client({
+                type: "metric",
+                name: "provider_ttfa",
+                ms: Math.round(performance.now() - speechStoppedAt),
+              });
+              speechStoppedAt = 0;
+            }
             client({ type: "audio", data: event.delta });
             break;
           // User barge-in
           case "input_audio_buffer.speech_started":
             client({ type: "interrupted" });
+            break;
+          case "input_audio_buffer.speech_stopped":
+            speechStoppedAt = performance.now();
             break;
           // Agent transcript
           case "response.output_audio_transcript.delta":

@@ -7,6 +7,7 @@ export type ServerMsg =
   | { type: "interrupted" } // user barge-in: client should flush its playback queue
   | { type: "transcript"; role: "user" | "agent"; text: string; final: boolean }
   | { type: "tool"; callId: string; name: string; status: "running" | "done"; args?: string }
+  | { type: "metric"; name: "provider_ttfa"; ms: number } // provider-side speech-stop → first audio
   | { type: "error"; message: string }
   | { type: "closed" };
 

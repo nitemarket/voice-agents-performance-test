@@ -14,9 +14,18 @@ interface Props {
   timings: Partial<Record<StageId, Timing>>;
   error: { stage: string; message: string } | null;
   onToggleRecord: () => void;
+  mode?: "sequential" | "streaming";
+  firstAudioMs?: number | null;
 }
 
-export function VoiceWidget({ stage, timings, error, onToggleRecord }: Props) {
+export function VoiceWidget({
+  stage,
+  timings,
+  error,
+  onToggleRecord,
+  mode = "sequential",
+  firstAudioMs = null,
+}: Props) {
   const busy = stage !== "idle" && stage !== "recording";
   const buttonLabel =
     stage === "recording" ? "Stop & send" : busy ? "Working…" : "Start talking";
@@ -35,6 +44,7 @@ export function VoiceWidget({ stage, timings, error, onToggleRecord }: Props) {
         {STAGES.map(({ id, label }) => {
           const timing = timings[id];
           const active = stage === id;
+          const upstreamLabel = mode === "streaming" && id === "llm" ? "first token" : "api";
           return (
             <span key={id} className={`stage-badge ${active ? "active" : ""}`}>
               {label}
@@ -43,12 +53,20 @@ export function VoiceWidget({ stage, timings, error, onToggleRecord }: Props) {
                 <span className="timing">
                   {" "}
                   {Math.round(timing.totalMs)}ms
-                  <span className="timing-upstream"> (api {timing.upstreamMs}ms)</span>
+                  <span className="timing-upstream">
+                    {" "}
+                    ({upstreamLabel} {timing.upstreamMs}ms)
+                  </span>
                 </span>
               )}
             </span>
           );
         })}
+        {mode === "streaming" && firstAudioMs !== null && (
+          <span className="stage-badge">
+            First audio <span className="timing">{firstAudioMs}ms</span>
+          </span>
+        )}
         {stage === "playing" && <span className="stage-badge active">Playing 🔊</span>}
       </div>
 

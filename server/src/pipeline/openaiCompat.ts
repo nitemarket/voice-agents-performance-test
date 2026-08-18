@@ -16,6 +16,14 @@ export function compatLlm(cfg: () => CompatConfig): LlmProvider {
       const res = await client.chat.completions.create({ model, messages });
       return res.choices[0]?.message?.content ?? "";
     },
+    async *chatStream(messages, model) {
+      const client = new OpenAI(cfg());
+      const stream = await client.chat.completions.create({ model, messages, stream: true });
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) yield delta;
+      }
+    },
   };
 }
 

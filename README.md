@@ -1,42 +1,59 @@
 # Voice Agent Lab
 
-A prototype for comparing voice-agent quality across model providers. Two modes, each on its
-own tab:
+A prototype for comparing voice-agent quality across model providers — and, centrally, for
+comparing the two voice-agent architectures head-to-head: a **streamed STT → LLM → TTS
+pipeline** versus **native speech-to-speech models**. Both tabs measure time-to-first-audio
+so the latency gap is a number, not a feeling; the pipeline offers per-stage model choice and
+inspectable text hand-offs, while native STS hears tone and responds fastest.
 
 - **Pipeline** — **mic → speech-to-text → LLM → text-to-speech → playback**, with each stage
-  independently switchable between providers to compare quality and latency.
+  independently switchable between providers to compare quality and latency per stage.
+  **Streaming mode** (on by default; untick to compare against strictly-sequential stages)
+  overlaps the stages: LLM tokens stream in and complete sentences are synthesized and played
+  while the model is still generating, cutting time-to-first-audio dramatically — shown as a
+  "First audio" badge, directly comparable to the Speech to Speech tab's latency panel.
 - **Speech to Speech** — hands-free realtime conversation against native speech-to-speech
   models (OpenAI Realtime, Gemini Live, Grok Voice), with live transcripts, barge-in, and
   **tool calling**: the agent plays phone support for a demo store and can call
   `get_order_status` (mock orders API), `search_knowledge_base` (RAG-lite over store
   policies), and `web_search` (Tavily; only offered when `TAVILY_API_KEY` is set). Tool
   invocations appear live in a "Tool activity" panel so you can compare how each model
-  decides to use tools. Demo order numbers: 1001, 1002, 1003. Tools live in
-  `server/src/tools/` — one file per tool plus a registry entry, executed server-side.
+  decides to use tools. Demo order numbers: 1001, 1002, 1003. A **Latency panel** reports
+  per-turn time-to-first-audio (measured client-side via a lightweight energy VAD: local
+  end-of-speech → first agent audio), the provider-side equivalent where the API exposes it
+  (OpenAI/xAI `speech_stopped` → first audio delta), and barge-in reaction time.
 
 ## Structure
 
 - `server/` — Bun + Hono API server. Holds all provider API keys. Organized by feature:
   - `src/pipeline/` — the STT/LLM/TTS stages behind three tiny interfaces
-    (`SttProvider`, `LlmProvider`, `TtsProvider`), with one file per provider in
-    `pipeline/providers/`.
-  - `src/realtime/` — speech-to-speech adapters (`RealtimeAdapter`) and their registry.
-  - `src/tools/` — tools callable by the realtime agent, one file per tool.
+    (`SttProvider`, `LlmProvider`, `TtsProvider`), one file per provider in
+    `pipeline/providers/`, and a registry that maps stage → provider → models.
+  - `src/realtime/` — speech-to-speech adapters (`RealtimeAdapter`): one shared adapter for
+    the OpenAI Realtime protocol (OpenAI + xAI), one for Gemini Live, plus their registry.
+  - `src/tools/` — tools callable by the realtime agent, one file per tool, executed
+    server-side.
+  - `src/routes/` — the HTTP endpoints and the STS WebSocket bridge.
+- `web/` — React + Vite app.
+  - `src/pages/` — `PipelinePage` (push-to-talk, per-stage pickers and latency badges) and
+    `StsPage` (connect/end, mute, tool activity, live transcript).
+  - `src/lib/` — fetch helpers, mic recording, audio streaming (AudioWorklet capture +
+    gapless PCM playback), and the STS WebSocket client.
+  - `src/components/` — shared picker/widget/transcript components.
 
 ## Providers
 
-| Provider | Stages | Env key | Free quota |
-| --- | --- | --- | --- |
-| OpenAI | STT, LLM, TTS | `OPENAI_API_KEY` | no (paid) |
-| xAI Grok | STT, LLM, TTS | `XAI_API_KEY` | no (paid) |
-| [Groq](https://console.groq.com) | STT, LLM, TTS | `GROQ_API_KEY` | yes — free tier, no credit card (rate-limited) |
-| [Google Gemini](https://aistudio.google.com) | LLM, TTS | `GEMINI_API_KEY` | yes — AI Studio free tier (rate-limited) |
-| [ElevenLabs](https://elevenlabs.io) | STT, TTS | `ELEVENLABS_API_KEY` | yes — free monthly credits (~10 min TTS) |
+| Provider | Pipeline stages | Speech to Speech | Env key | Free quota |
+| --- | --- | --- | --- | --- |
+| OpenAI | STT, LLM, TTS | `gpt-realtime`, `gpt-realtime-mini` | `OPENAI_API_KEY` | no (paid) |
+| xAI Grok | STT, LLM, TTS | `grok-voice-latest`, `grok-voice-think-fast-2.0` | `XAI_API_KEY` | no (paid) |
+| [Groq](https://console.groq.com) | STT, LLM, TTS | — | `GROQ_API_KEY` | yes — free tier, no credit card (rate-limited) |
+| [Google Gemini](https://aistudio.google.com) | LLM, TTS | `gemini-3.1-flash-live-preview` | `GEMINI_API_KEY` | yes — AI Studio free tier (rate-limited) |
+| [ElevenLabs](https://elevenlabs.io) | STT, TTS | — | `ELEVENLABS_API_KEY` | yes — free monthly credits (~10 min TTS) |
+| [Tavily](https://tavily.com) | — | enables the `web_search` tool | `TAVILY_API_KEY` | yes — free tier |
 
-Groq alone covers all three stages for free, so a single Groq key is enough to try the whole
-pipeline end-to-end.
-- `web/` — React + Vite widget: push-to-talk button, per-stage provider pickers, per-stage
-  latency badges, and a conversation transcript.
+Groq alone covers all three pipeline stages for free, so a single Groq key is enough to try
+the whole pipeline end-to-end.
 
 ## Setup
 
@@ -49,48 +66,75 @@ bun run dev
 ```
 
 `bun run dev` starts the API server on http://localhost:8787 and the web app on
-http://localhost:5173 (Vite proxies `/api` to the server). Open the web app, allow microphone
-access, press **Start talking**, speak, then press **Stop & send**.
+http://localhost:5173 (Vite proxies `/api`, including the WebSocket, to the server).
 
-Providers whose env key is missing are hidden from the UI automatically — you can run with just
-one of `OPENAI_API_KEY` / `XAI_API_KEY`. Note: `.env` is only read at server start, so restart
-`bun run dev` after changing keys (the file watcher does not pick it up).
+- **Pipeline tab**: allow microphone access, press **Start talking**, speak, press
+  **Stop & send**, and hear the reply. Switch any stage's provider between turns.
+- **Speech to Speech tab**: pick a realtime model, press **Connect**, and just talk —
+  provider-side voice activity detection handles turn-taking, and interrupting the agent
+  mid-reply cuts it off (barge-in). Try "Where's my order one thousand one?" or "Can I still
+  return order 1003?" to watch tool calls happen in the Tool activity panel.
+
+Providers whose env key is missing are hidden from the UI automatically — you can run with a
+single key. Note: `.env` is only read at server start, so restart `bun run dev` after
+changing keys (the file watcher does not pick it up).
 
 ## API
 
 | Endpoint | Body | Returns |
 | --- | --- | --- |
-| `GET /api/providers` | — | catalog of configured providers/models per stage |
+| `GET /api/providers` | — | catalog of configured pipeline providers/models per stage |
 | `POST /api/stt` | multipart: `audio`, `provider`, `option` | `{ text, ms }` |
 | `POST /api/llm` | JSON: `{ messages, provider, option }` | `{ text, ms }` |
+| `POST /api/llm/stream` | JSON: `{ messages, provider, option }` | SSE: `{delta}` per token, then `{done, ms}` (or `{error}`) |
 | `POST /api/tts` | JSON: `{ text, provider, option }` | audio bytes (`X-Upstream-Ms` header) |
 | `GET /api/sts/providers` | — | catalog of configured realtime (speech-to-speech) providers |
-| `GET /api/sts` (WebSocket) | query: `provider`, `model` | bidirectional JSON: `{type:"audio", data:<b64 pcm16>}` up; `ready`/`audio`/`interrupted`/`transcript`/`error`/`closed` down |
-
-The STS WebSocket is a server-side proxy: the browser streams mic PCM to our server, which
-bridges to the provider's realtime API (OpenAI Realtime protocol for OpenAI and xAI via one
-shared adapter, Gemini Live protocol for Gemini) with the API key injected server-side.
-Adapters live in `server/src/realtime/`; add one file + a registry entry for a new
-realtime provider. Ephemeral-token/WebRTC direct connection is not implemented (out of scope).
+| `GET /api/sts` (WebSocket) | query: `provider`, `model` | see protocol below |
 
 `ms` / `X-Upstream-Ms` is the server-measured upstream provider latency; the UI also shows the
 client-measured total per stage.
 
-## Adding a provider
+### STS WebSocket protocol
 
-1. Create (or extend) the provider's file in `server/src/pipeline/providers/<name>.ts`,
-   implementing the stage interfaces from [types.ts](server/src/pipeline/types.ts). Providers
-   with OpenAI-compatible APIs are one-liners via
-   [openaiCompat.ts](server/src/pipeline/openaiCompat.ts).
-2. Add an entry (id, label, env key, options) to
-   [registry.ts](server/src/pipeline/registry.ts).
+The STS WebSocket is a server-side proxy: the browser streams mic audio to our server, which
+bridges to the provider's realtime API with the API key injected server-side. Tools also
+execute on the server during the session. Messages are JSON:
 
-The UI picks it up automatically from `GET /api/providers`. Model IDs live only in the registry,
-so bumping to newer models is a one-line change.
+- client → server: `{type:"audio", data:<b64 pcm16 @ inputRate>}`
+- server → client:
+  - `{type:"ready", inputRate, outputRate, tools}` — session live; rates in Hz
+  - `{type:"audio", data}` — agent speech (b64 PCM16 @ outputRate)
+  - `{type:"interrupted"}` — user barge-in; client flushes its playback queue
+  - `{type:"transcript", role:"user"|"agent", text, final}`
+  - `{type:"tool", callId, name, status:"running"|"done", args?}`
+  - `{type:"metric", name:"provider_ttfa", ms}` — provider-side response latency (OpenAI/xAI)
+  - `{type:"error", message}` · `{type:"closed"}`
+
+Ephemeral-token/WebRTC direct connection is not implemented (out of scope for the prototype).
+
+## Extending
+
+- **Pipeline provider**: create (or extend) `server/src/pipeline/providers/<name>.ts`
+  implementing the stage interfaces from [types.ts](server/src/pipeline/types.ts) — providers
+  with OpenAI-compatible APIs are one-liners via
+  [openaiCompat.ts](server/src/pipeline/openaiCompat.ts) — then add an entry to
+  [registry.ts](server/src/pipeline/registry.ts). Model IDs live only in the registry, so
+  bumping to newer models is a one-line change.
+- **Realtime provider**: implement `RealtimeAdapter` from
+  [types.ts](server/src/realtime/types.ts) in one file (OpenAI-Realtime-compatible endpoints
+  can reuse [openaiCompat.ts](server/src/realtime/openaiCompat.ts)), then add an entry to
+  [registry.ts](server/src/realtime/registry.ts).
+- **Agent tool**: implement `ToolDef` in `server/src/tools/<name>.ts` and add it to
+  [registry.ts](server/src/tools/registry.ts). Tools are offered to every realtime provider
+  automatically.
+
+The UI picks all of this up from the catalogs — no frontend changes needed.
 
 ## Not yet built (deliberately)
 
-- Streaming (LLM tokens, chunked TTS) and realtime speech-to-speech APIs
-  (OpenAI Realtime, xAI `wss://api.x.ai/v1/realtime`).
-- More providers: Anthropic (LLM), Deepgram (STT), ElevenLabs (TTS) — each is one file + one
-  registry entry.
+- Streaming STT in the pipeline tab (mic audio streamed to the provider while speaking) —
+  streaming currently starts at the LLM stage.
+- Telephony ingress (e.g. Twilio Media Streams bridging G.711 into the same STS WebSocket) —
+  the target end product; the server-side bridge architecture is already shaped for it.
+- Ephemeral tokens / WebRTC transport for the realtime session.
+- More providers: Anthropic (LLM), Deepgram (STT), Groq/ElevenLabs realtime agents.

@@ -19,6 +19,13 @@ interface ToolCall {
   args?: string;
 }
 
+interface TurnLatency {
+  turn: number;
+  ttfaMs: number; // perceived: local end-of-speech → first agent audio
+  providerMs?: number; // provider-side, where the API exposes it (OpenAI/xAI)
+  bargeMs?: number; // barge-in: local speech start → agent audio flushed
+}
+
 export default function StsPage() {
   const [catalog, setCatalog] = useState<StsProvider[] | null>(null);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -29,11 +36,16 @@ export default function StsPage() {
   const [partial, setPartial] = useState<{ user?: string; agent?: string }>({});
   const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
   const [toolNames, setToolNames] = useState<string[]>([]);
+  const [latency, setLatency] = useState<TurnLatency[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const conn = useRef<StsConnection | null>(null);
   const mic = useRef<MicStream | null>(null);
   const player = useRef<StreamPlayer | null>(null);
+  const speechEndAt = useRef<number | null>(null);
+  const providerMs = useRef<number | null>(null);
+  const bargeStartAt = useRef<number | null>(null);
+  const turnCount = useRef(0);
 
   useEffect(() => {
     fetch("/api/sts/providers")
@@ -68,7 +80,14 @@ export default function StsPage() {
         player.current = new StreamPlayer(msg.outputRate);
         const m = new MicStream();
         mic.current = m;
-        m.start(msg.inputRate, (b64) => conn.current?.sendAudio(b64))
+        m.start(msg.inputRate, (b64) => conn.current?.sendAudio(b64), {
+          onSpeechStart: () => {
+            if (player.current?.playing) bargeStartAt.current = performance.now();
+          },
+          onSpeechEnd: (ts) => {
+            speechEndAt.current = ts;
+          },
+        })
           .then(() => setStatus("live"))
           .catch(() => {
             setError("Microphone access denied or unavailable");
@@ -77,9 +96,29 @@ export default function StsPage() {
         break;
       }
       case "audio":
+        if (speechEndAt.current !== null) {
+          const entry: TurnLatency = {
+            turn: ++turnCount.current,
+            ttfaMs: Math.round(performance.now() - speechEndAt.current),
+            ...(providerMs.current !== null ? { providerMs: providerMs.current } : {}),
+          };
+          speechEndAt.current = null;
+          providerMs.current = null;
+          setLatency((l) => [...l, entry]);
+        }
         player.current?.push(msg.data);
         break;
+      case "metric":
+        providerMs.current = msg.ms;
+        break;
       case "interrupted":
+        if (bargeStartAt.current !== null) {
+          const bargeMs = Math.round(performance.now() - bargeStartAt.current);
+          bargeStartAt.current = null;
+          setLatency((l) =>
+            l.length > 0 ? [...l.slice(0, -1), { ...l[l.length - 1], bargeMs }] : l,
+          );
+        }
         player.current?.flush();
         break;
       case "transcript":
@@ -119,6 +158,11 @@ export default function StsPage() {
     if (!selection) return;
     setError(null);
     setToolCalls([]);
+    setLatency([]);
+    speechEndAt.current = null;
+    providerMs.current = null;
+    bargeStartAt.current = null;
+    turnCount.current = 0;
     setStatus("connecting");
     conn.current = connectSts(selection.provider, selection.model, handleMessage, () => {
       if (conn.current) disconnect();
@@ -226,6 +270,27 @@ export default function StsPage() {
         )}
         {error && <p className="error">{error}</p>}
       </div>
+
+      {latency.length > 0 && (
+        <div className="tool-log">
+          <h2>Latency</h2>
+          <p className="latency-summary">
+            First audio after you stop speaking — avg{" "}
+            {Math.round(latency.reduce((s, l) => s + l.ttfaMs, 0) / latency.length)}ms over{" "}
+            {latency.length} turn{latency.length > 1 ? "s" : ""}
+          </p>
+          {latency.slice(-5).map((l) => (
+            <div key={l.turn} className="tool-entry">
+              <span className="tool-status done">⏱</span>
+              <span>
+                Turn {l.turn}: first audio <strong>{l.ttfaMs}ms</strong>
+                {l.providerMs !== undefined && ` · provider ${l.providerMs}ms`}
+                {l.bargeMs !== undefined && ` · barge-in stop ${l.bargeMs}ms`}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {toolCalls.length > 0 && (
         <div className="tool-log">
