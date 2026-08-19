@@ -1,3 +1,4 @@
+import ReactMarkdown from "react-markdown";
 import type { ChatMessage } from "../lib/api";
 
 interface Props {
@@ -20,7 +21,13 @@ export function Transcript({ messages, onReset }: Props) {
       {messages.map((m, i) => (
         <div key={i} className={`turn turn-${m.role}`}>
           <span className="turn-role">{m.role === "user" ? "You" : "Agent"}</span>
-          <p>{m.content}</p>
+          {m.role === "assistant" ? (
+            <div className="turn-md">
+              <ReactMarkdown>{m.content}</ReactMarkdown>
+            </div>
+          ) : (
+            <p>{m.content}</p>
+          )}
         </div>
       ))}
     </div>

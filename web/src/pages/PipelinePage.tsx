@@ -107,6 +107,9 @@ export default function PipelinePage() {
     signal?: AbortSignal,
   ): Promise<string> {
     const tLlm = performance.now();
+    // Server tool ids restart per request ("web_search-1"), so namespace them
+    // per turn or later turns' calls would collapse into earlier log entries.
+    const turnTag = ++toolSeq.current;
     let firstTokenMs = 0;
     let fullText = "";
     let pending = "";
@@ -155,7 +158,7 @@ export default function PipelinePage() {
           break;
         }
         if ("tool" in event) {
-          recordTool(event.tool);
+          recordTool({ ...event.tool, id: `${turnTag}:${event.tool.id}` });
           // A tool call is an utterance boundary: the model's pre-tool text
           // ("one moment, let me check…") is complete — speak it now so it
           // covers the tool wait instead of sitting in the buffer.
