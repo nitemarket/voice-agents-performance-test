@@ -11,18 +11,45 @@ interface CompatConfig {
 
 export function compatLlm(cfg: () => CompatConfig): LlmProvider {
   return {
-    async chat(messages, model) {
+    async chat(messages, model, tools) {
       const client = new OpenAI(cfg());
-      const res = await client.chat.completions.create({ model, messages });
-      return res.choices[0]?.message?.content ?? "";
+      const res = await client.chat.completions.create({
+        model,
+        messages: messages as never,
+        ...(tools?.length ? { tools: tools as never } : {}),
+      });
+      const message = res.choices[0]?.message;
+      const toolCalls = (message?.tool_calls ?? [])
+        .filter((tc): tc is Extract<typeof tc, { type: "function" }> => tc.type === "function")
+        .map((tc) => ({ id: tc.id, name: tc.function.name, arguments: tc.function.arguments }));
+      return {
+        text: message?.content ?? "",
+        toolCalls: toolCalls.length ? toolCalls : undefined,
+      };
     },
-    async *chatStream(messages, model) {
+    async *chatStream(messages, model, tools) {
       const client = new OpenAI(cfg());
-      const stream = await client.chat.completions.create({ model, messages, stream: true });
+      const stream = await client.chat.completions.create({
+        model,
+        messages: messages as never,
+        stream: true,
+        ...(tools?.length ? { tools: tools as never } : {}),
+      });
+      // Tool-call arguments stream in fragments keyed by index; accumulate
+      // and emit them as one event when the stream ends.
+      const pending: Record<number, { id: string; name: string; arguments: string }> = {};
       for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta?.content;
-        if (delta) yield delta;
+        const delta = chunk.choices[0]?.delta;
+        if (delta?.content) yield { type: "delta", text: delta.content };
+        for (const tc of delta?.tool_calls ?? []) {
+          const acc = (pending[tc.index] ??= { id: "", name: "", arguments: "" });
+          if (tc.id) acc.id = tc.id;
+          if (tc.function?.name) acc.name += tc.function.name;
+          if (tc.function?.arguments) acc.arguments += tc.function.arguments;
+        }
       }
+      const calls = Object.values(pending);
+      if (calls.length) yield { type: "toolCalls", calls };
     },
   };
 }

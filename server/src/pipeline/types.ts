@@ -1,7 +1,30 @@
 export interface ChatMessage {
-  role: "system" | "user" | "assistant";
-  content: string;
+  role: "system" | "user" | "assistant" | "tool";
+  content: string | null;
+  // assistant messages replaying a tool round / tool result messages
+  tool_calls?: { id: string; type: "function"; function: { name: string; arguments: string } }[];
+  tool_call_id?: string;
 }
+
+export interface ToolSpec {
+  type: "function";
+  function: { name: string; description: string; parameters: Record<string, unknown> };
+}
+
+export interface LlmToolCall {
+  id: string;
+  name: string;
+  arguments: string; // JSON string
+}
+
+export interface LlmResult {
+  text: string;
+  toolCalls?: LlmToolCall[];
+}
+
+export type LlmStreamItem =
+  | { type: "delta"; text: string }
+  | { type: "toolCalls"; calls: LlmToolCall[] };
 
 export interface SttProvider {
   transcribe(audio: File, model: string): Promise<string>;
@@ -28,8 +51,8 @@ export interface SttStreamAdapter {
 }
 
 export interface LlmProvider {
-  chat(messages: ChatMessage[], model: string): Promise<string>;
-  chatStream(messages: ChatMessage[], model: string): AsyncIterable<string>;
+  chat(messages: ChatMessage[], model: string, tools?: ToolSpec[]): Promise<LlmResult>;
+  chatStream(messages: ChatMessage[], model: string, tools?: ToolSpec[]): AsyncIterable<LlmStreamItem>;
 }
 
 export interface TtsResult {

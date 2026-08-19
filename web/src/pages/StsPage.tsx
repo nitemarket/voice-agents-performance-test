@@ -4,6 +4,7 @@ import { connectSts, type StsConnection, type StsServerMsg } from "../lib/stsCli
 import { MicStream, StreamPlayer } from "../lib/audioStream";
 import { Transcript } from "../components/Transcript";
 import { LatencyPanel } from "../components/LatencyPanel";
+import { ToolLog, type ToolLogEntry } from "../components/ToolLog";
 
 interface StsProvider {
   id: string;
@@ -12,13 +13,6 @@ interface StsProvider {
 }
 
 type Status = "idle" | "connecting" | "live";
-
-interface ToolCall {
-  callId: string;
-  name: string;
-  status: "running" | "done";
-  args?: string;
-}
 
 interface TurnLatency {
   turn: number;
@@ -35,7 +29,7 @@ export default function StsPage() {
   const [muted, setMuted] = useState(false);
   const [turns, setTurns] = useState<ChatMessage[]>([]);
   const [partial, setPartial] = useState<{ user?: string; agent?: string }>({});
-  const [toolCalls, setToolCalls] = useState<ToolCall[]>([]);
+  const [toolCalls, setToolCalls] = useState<ToolLogEntry[]>([]);
   const [toolNames, setToolNames] = useState<string[]>([]);
   const [latency, setLatency] = useState<TurnLatency[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -286,21 +280,7 @@ export default function StsPage() {
         }))}
       />
 
-      {toolCalls.length > 0 && (
-        <div className="tool-log">
-          <h2>Tool activity</h2>
-          {toolCalls.map((call) => (
-            <div key={call.callId} className="tool-entry">
-              <span className={`tool-status ${call.status}`}>
-                {call.status === "running" ? "⏳" : "✓"}
-              </span>
-              <code>
-                {call.name}({call.args ? call.args.slice(0, 80) : ""})
-              </code>
-            </div>
-          ))}
-        </div>
-      )}
+      <ToolLog entries={toolCalls} />
 
       <Transcript
         messages={displayTurns}

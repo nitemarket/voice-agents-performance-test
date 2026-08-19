@@ -18,7 +18,11 @@ inspectable text hand-offs, while native STS hears tone and responds fastest.
   (realtime transcription API), xAI (streaming STT WebSocket), and ElevenLabs (Scribe v2
   Realtime) stream partials as you speak; Groq has no realtime API, so its live mode uses
   VAD-segmented batch — the turn's audio is buffered and transcribed in one fast batch call
-  at commit (~0.5s, no partials while speaking).
+  at commit (~0.5s, no partials while speaking). The pipeline agent has the **same tools**
+  as the STS agent (orders lookup, knowledge base, web search) and the same support-agent
+  persona — the LLM stage runs a server-side tool loop (up to 6 rounds), tool activity
+  streams over SSE into the same Tool activity panel, so tool-use quality is directly
+  comparable across the two architectures.
 - **Speech to Speech** — hands-free realtime conversation against native speech-to-speech
   models (OpenAI Realtime, Gemini Live, Grok Voice), with live transcripts, barge-in, and
   **tool calling**: the agent plays phone support for a demo store and can call
@@ -93,8 +97,8 @@ changing keys (the file watcher does not pick it up).
 | `GET /api/providers` | — | catalog of configured pipeline providers/models per stage |
 | `POST /api/stt` | multipart: `audio`, `provider`, `option` | `{ text, ms }` |
 | `GET /api/stt/stream` (WebSocket) | query: `provider`; `{type:"audio", data}` + `{type:"finalize"}` up | `ready`/`partial`/`final`/`error` down; multi-turn |
-| `POST /api/llm` | JSON: `{ messages, provider, option }` | `{ text, ms }` |
-| `POST /api/llm/stream` | JSON: `{ messages, provider, option }` | SSE: `{delta}` per token, then `{done, ms}` (or `{error}`) |
+| `POST /api/llm` | JSON: `{ messages, provider, option }` | `{ text, ms, tools }` (tool loop runs server-side) |
+| `POST /api/llm/stream` | JSON: `{ messages, provider, option }` | SSE: `{delta}` per token, `{tool}` during tool rounds, then `{done, ms}` (or `{error}`) |
 | `POST /api/tts` | JSON: `{ text, provider, option }` | audio bytes (`X-Upstream-Ms` header) |
 | `GET /api/sts/providers` | — | catalog of configured realtime (speech-to-speech) providers |
 | `GET /api/sts` (WebSocket) | query: `provider`, `model` | see protocol below |

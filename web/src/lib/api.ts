@@ -69,7 +69,7 @@ export async function transcribe(
 export async function chat(
   messages: ChatMessage[],
   sel: Selection,
-): Promise<{ text: string; timing: Timing }> {
+): Promise<{ text: string; timing: Timing; tools: string[] }> {
   const t0 = performance.now();
   const res = await fetch("/api/llm", {
     method: "POST",
@@ -78,7 +78,11 @@ export async function chat(
   });
   if (!res.ok) await fail(res);
   const json = await res.json();
-  return { text: json.text, timing: { totalMs: performance.now() - t0, upstreamMs: json.ms } };
+  return {
+    text: json.text,
+    timing: { totalMs: performance.now() - t0, upstreamMs: json.ms },
+    tools: json.tools ?? [],
+  };
 }
 
 export async function speak(

@@ -66,17 +66,21 @@ export interface VadCallbacks {
   onSpeechEnd?: (ts: number) => void;
 }
 
-// Energy-based VAD tuning: RMS above threshold = voice; speech ends after
-// HANGOVER_MS of silence. Approximate by design — used for latency metrics,
-// not turn-taking (the provider's VAD does that).
-const VAD_THRESHOLD = 0.015;
-const VAD_HANGOVER_MS = 400;
+// Energy-based VAD tuning: RMS above threshold = voice. Speech-start only
+// fires after MIN_SPEECH_MS of *consecutive* voiced frames (so a cough, door
+// slam, or brief background voice doesn't trigger barge-in), and speech-end
+// after HANGOVER_MS of silence.
+const VAD_THRESHOLD = 0.02;
+const VAD_MIN_SPEECH_MS = 240;
+const VAD_HANGOVER_MS = 500;
 
 export class MicStream {
   private ctx: AudioContext | null = null;
   private stream: MediaStream | null = null;
+  private sampleRate = 16000;
   muted = false;
   private speaking = false;
+  private voicedMs = 0; // consecutive voiced audio while not yet "speaking"
   private lastVoiceTs = 0;
 
   private updateVad(samples: Float32Array, vad: VadCallbacks): void {
@@ -84,14 +88,21 @@ export class MicStream {
     for (let i = 0; i < samples.length; i++) sum += samples[i] * samples[i];
     const rms = Math.sqrt(sum / samples.length);
     const now = performance.now();
+    const frameMs = (samples.length / this.sampleRate) * 1000;
     if (rms >= VAD_THRESHOLD) {
-      if (!this.speaking) {
-        this.speaking = true;
-        vad.onSpeechStart?.();
-      }
       this.lastVoiceTs = now;
-    } else if (this.speaking && now - this.lastVoiceTs > VAD_HANGOVER_MS) {
+      if (!this.speaking) {
+        this.voicedMs += frameMs;
+        if (this.voicedMs >= VAD_MIN_SPEECH_MS) {
+          this.speaking = true;
+          vad.onSpeechStart?.();
+        }
+      }
+    } else if (!this.speaking) {
+      this.voicedMs = 0; // isolated blip — reset the confirmation window
+    } else if (now - this.lastVoiceTs > VAD_HANGOVER_MS) {
       this.speaking = false;
+      this.voicedMs = 0;
       vad.onSpeechEnd?.(this.lastVoiceTs);
     }
   }
@@ -104,6 +115,7 @@ export class MicStream {
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true },
     });
+    this.sampleRate = sampleRate;
     this.ctx = new AudioContext({ sampleRate });
     const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: "application/javascript" }));
     try {

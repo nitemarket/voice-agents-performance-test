@@ -11,6 +11,11 @@ export class DecodedQueuePlayer {
   onFirstAudio: (() => void) | null = null;
 
   async enqueue(blob: Blob): Promise<void> {
+    // Contexts created outside a user gesture can start suspended — audio
+    // would schedule silently. Resume before scheduling.
+    if (this.ctx.state !== "running") {
+      await this.ctx.resume().catch(() => {});
+    }
     const buffer = await this.ctx.decodeAudioData(await blob.arrayBuffer());
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
@@ -26,14 +31,8 @@ export class DecodedQueuePlayer {
     }
   }
 
-  /** Resolves when everything scheduled has finished playing. */
-  async drain(): Promise<void> {
-    while (this.active.size > 0) {
-      await new Promise((r) => setTimeout(r, 100));
-    }
-  }
-
-  close(): void {
+  /** Stop and clear everything queued (barge-in); the player stays usable. */
+  flush(): void {
     for (const source of this.active) {
       try {
         source.stop();
@@ -42,6 +41,19 @@ export class DecodedQueuePlayer {
       }
     }
     this.active.clear();
+    this.nextTime = 0;
+    this.onFirstAudio = null;
+  }
+
+  /** Resolves when everything scheduled has finished playing. */
+  async drain(): Promise<void> {
+    while (this.active.size > 0) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+  }
+
+  close(): void {
+    this.flush();
     void this.ctx.close();
   }
 }

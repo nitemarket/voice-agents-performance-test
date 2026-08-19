@@ -2,6 +2,7 @@ import type { ChatMessage, Selection } from "./api";
 
 export type LlmStreamEvent =
   | { delta: string }
+  | { tool: { id: string; name: string; status: "running" | "done"; args?: string } }
   | { done: true; ms: number }
   | { error: string };
 
@@ -38,6 +39,36 @@ export async function* streamChat(
       }
     }
   }
+}
+
+/**
+ * Cut the first speakable chunk early, at a clause boundary, so TTS can start
+ * before the first full sentence completes. Only used before any audio has
+ * been queued; requires ≥24 chars so we don't synthesize a bare "Sure,".
+ */
+export function eagerFirstCut(text: string): { head: string; rest: string } | null {
+  // Scan ALL clause boundaries and take the first one far enough in — replies
+  // often open with an early comma ("One moment, ...") that is too short to
+  // speak on its own.
+  const re = /[,;:—]\s/g;
+  let match;
+  while ((match = re.exec(text))) {
+    if (match.index + 1 >= 20) {
+      const end = match.index + match[0].length;
+      return { head: text.slice(0, end).trim(), rest: text.slice(end) };
+    }
+  }
+  return null;
+}
+
+/** Make streamed text TTS-friendly: strip markdown emphasis, headings, bullets. */
+export function toSpeakable(text: string): string {
+  return text
+    .replace(/\*\*|__|`+/g, "")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*•]\s+/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**

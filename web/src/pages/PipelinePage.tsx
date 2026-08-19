@@ -9,7 +9,7 @@ import {
   type Selection,
   type Timing,
 } from "../lib/api";
-import { extractSentences, streamChat } from "../lib/llmStream";
+import { eagerFirstCut, extractSentences, streamChat, toSpeakable } from "../lib/llmStream";
 import { DecodedQueuePlayer } from "../lib/decodedPlayer";
 import { startLiveStt, type LiveSttSession } from "../lib/sttStream";
 import { play } from "../lib/player";
@@ -18,6 +18,7 @@ import { ProviderPicker, type StageId } from "../components/ProviderPicker";
 import { VoiceWidget, type PipelineStage } from "../components/VoiceWidget";
 import { Transcript } from "../components/Transcript";
 import { LatencyPanel, type LatencyEntry } from "../components/LatencyPanel";
+import { ToolLog, type ToolLogEntry } from "../components/ToolLog";
 
 type Selections = Record<StageId, Selection>;
 type LiveStatus = "idle" | "connecting" | "listening" | "replying";
@@ -47,6 +48,8 @@ export default function PipelinePage() {
   const [partialReply, setPartialReply] = useState<string | null>(null);
   const [liveStatus, setLiveStatus] = useState<LiveStatus>("idle");
   const [latency, setLatency] = useState<LatencyEntry[]>([]);
+  const [toolLog, setToolLog] = useState<ToolLogEntry[]>([]);
+  const toolSeq = useRef(0);
 
   const recorder = useRef(new Recorder());
   const liveStt = useRef<LiveSttSession | null>(null);
@@ -55,6 +58,9 @@ export default function PipelinePage() {
   const replying = useRef(false);
   const speechEndAt = useRef<number | null>(null);
   const sttFinalizeMs = useRef(0);
+  const pendingTurn = useRef<string | null>(null);
+  const dispatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userSpeaking = useRef(false);
   const turnCount = useRef(0);
   const messagesRef = useRef<ChatMessage[]>([]);
   const partialReplyRef = useRef<string | null>(null);
@@ -79,6 +85,16 @@ export default function PipelinePage() {
     setPartialReply(text);
   }
 
+  function recordTool(event: { id: string; name: string; status: "running" | "done"; args?: string }) {
+    setToolLog((log) => {
+      const existing = log.find((t) => t.callId === event.id);
+      if (existing) {
+        return log.map((t) => (t.callId === event.id ? { ...t, status: event.status } : t));
+      }
+      return [...log, { callId: event.id, name: event.name, status: event.status, args: event.args }];
+    });
+  }
+
   /**
    * Shared streamed-reply path: LLM tokens stream in, complete sentences are
    * synthesized and queued on the player while generation continues.
@@ -94,27 +110,41 @@ export default function PipelinePage() {
     let firstTokenMs = 0;
     let fullText = "";
     let pending = "";
-    const sentenceQueue: string[] = [];
     let llmDone = false;
     let streamError: string | null = null;
+    let ttsError: string | null = null;
 
-    const ttsWorker = (async () => {
-      for (;;) {
+    // TTS fetches start immediately per chunk and run in parallel; the
+    // playback worker awaits them in order, so audio stays sequential but the
+    // network latency of chunk N+1 overlaps chunk N's playback.
+    const audioQueue: Promise<Blob | null>[] = [];
+    const queueTts = (sentence: string) => {
+      const speakText = toSpeakable(sentence);
+      if (!speakText) return;
+      audioQueue.push(
+        speak(speakText, sel.tts, signal)
+          .then((tts) => {
+            setTimings((t) => ({ ...t, tts: tts.timing }));
+            return tts.audio;
+          })
+          .catch((err) => {
+            if (!signal?.aborted) {
+              ttsError = err instanceof Error ? err.message : String(err);
+            }
+            return null;
+          }),
+      );
+    };
+
+    const playbackWorker = (async () => {
+      for (let i = 0; ; i++) {
+        while (i >= audioQueue.length) {
+          if (llmDone || signal?.aborted) return;
+          await new Promise((r) => setTimeout(r, 30));
+        }
+        const audio = await audioQueue[i];
         if (signal?.aborted) return;
-        const sentence = sentenceQueue.shift();
-        if (sentence === undefined) {
-          if (llmDone) return;
-          await new Promise((r) => setTimeout(r, 50));
-          continue;
-        }
-        try {
-          const tts = await speak(sentence, sel.tts, signal);
-          setTimings((t) => ({ ...t, tts: tts.timing }));
-          if (!signal?.aborted) await player.enqueue(tts.audio);
-        } catch (err) {
-          if (signal?.aborted) return;
-          throw err;
-        }
+        if (audio) await player.enqueue(audio);
       }
     })();
 
@@ -123,6 +153,23 @@ export default function PipelinePage() {
         if ("error" in event) {
           streamError = event.error;
           break;
+        }
+        if ("tool" in event) {
+          recordTool(event.tool);
+          // A tool call is an utterance boundary: the model's pre-tool text
+          // ("one moment, let me check…") is complete — speak it now so it
+          // covers the tool wait instead of sitting in the buffer.
+          if (pending.trim()) {
+            queueTts(pending.trim());
+            pending = "";
+          }
+          // Post-tool text concatenates without whitespace ("Lumpur.In…");
+          // add a separator so display and sentence detection work.
+          if (fullText && !/\s$/.test(fullText)) {
+            fullText += " ";
+            updatePartialReply(fullText);
+          }
+          continue;
         }
         if ("done" in event) {
           setTimings((t) => ({
@@ -136,54 +183,113 @@ export default function PipelinePage() {
         pending += event.delta;
         updatePartialReply(fullText);
         const { sentences, rest } = extractSentences(pending);
-        sentenceQueue.push(...sentences);
+        sentences.forEach(queueTts);
         pending = rest;
+        // Before any audio is queued, cut the first chunk at a clause
+        // boundary so speech starts before the first full sentence completes.
+        if (audioQueue.length === 0) {
+          const cut = eagerFirstCut(pending);
+          if (cut) {
+            queueTts(cut.head);
+            pending = cut.rest;
+          }
+        }
       }
     } catch (err) {
-      if (signal?.aborted) {
-        llmDone = true;
-        await ttsWorker.catch(() => {});
-        return fullText;
-      }
+      llmDone = true;
+      await playbackWorker.catch(() => {});
+      if (signal?.aborted) return fullText;
       throw err;
     }
-    if (pending.trim() && !signal?.aborted) sentenceQueue.push(pending.trim());
+    if (pending.trim() && !signal?.aborted) queueTts(pending.trim());
     llmDone = true;
-    await ttsWorker;
+    await playbackWorker;
     if (streamError) throw new Error(streamError);
+    if (ttsError && !signal?.aborted) throw new Error(ttsError);
     return fullText;
   }
 
   // ---- Live (hands-free) mode: streaming STT + barge-in ----
 
+  // Turn merging: a committed transcript is held briefly before dispatch so a
+  // thinking pause ("…more information about the <pause> LRT disruption")
+  // merges into one turn instead of sending the fragment to the LLM.
+  const COMPLETE_DISPATCH_MS = 350;
+  const INCOMPLETE_DISPATCH_MS = 1200;
+  const CONTINUATION_WORDS = new Set([
+    "the", "a", "an", "to", "of", "in", "on", "at", "for", "about", "with",
+    "and", "or", "but", "so", "then", "how", "what", "my", "your", "is", "are",
+  ]);
+
+  function looksComplete(text: string): boolean {
+    if (!/[.!?…。！？]$/.test(text)) return false;
+    const lastWord = text
+      .replace(/[.!?…。！？]+$/, "")
+      .split(/\s+/)
+      .pop()
+      ?.toLowerCase();
+    return !lastWord || !CONTINUATION_WORDS.has(lastWord);
+  }
+
+  function queueTurnSegment(text: string, sttMs: number) {
+    sttFinalizeMs.current = sttMs;
+    const trimmed = text.trim();
+    if (trimmed) {
+      pendingTurn.current = pendingTurn.current ? `${pendingTurn.current} ${trimmed}` : trimmed;
+      setPartialUser(pendingTurn.current);
+    }
+    if (dispatchTimer.current) clearTimeout(dispatchTimer.current);
+    const pending = pendingTurn.current;
+    if (!pending) return;
+    const delay = looksComplete(pending) ? COMPLETE_DISPATCH_MS : INCOMPLETE_DISPATCH_MS;
+    dispatchTimer.current = setTimeout(() => {
+      dispatchTimer.current = null;
+      if (userSpeaking.current) return; // resumed talking — wait for the next segment
+      const turn = pendingTurn.current;
+      pendingTurn.current = null;
+      if (turn) void handleLiveTurn(turn);
+    }, delay);
+  }
+
   async function startLive() {
-    if (!selections) return;
+    if (!selections || liveStatus !== "idle") return;
     setError(null);
     setLatency([]);
     setTimings({});
+    setToolLog([]);
     turnCount.current = 0;
     setLiveStatus("connecting");
+    // One player for the whole session, created on the user's click so the
+    // AudioContext is never gesture-blocked; turns share it and flush on barge-in.
+    livePlayer.current = new DecodedQueuePlayer();
     try {
       liveStt.current = await startLiveStt(
         selections.stt.provider,
         {
-          onPartial: (text) => setPartialUser(text || null),
-          onFinal: (text, ms) => {
-            sttFinalizeMs.current = ms;
-            void handleLiveTurn(text);
-          },
+          onPartial: (text) =>
+            setPartialUser(
+              pendingTurn.current ? `${pendingTurn.current} ${text}` : text || null,
+            ),
+          onFinal: (text, ms) => queueTurnSegment(text, ms),
           onError: (message) => setError({ stage: "stt", message }),
           onClosed: () => stopLive(),
         },
         {
           onSpeechStart: () => {
+            userSpeaking.current = true;
+            // resumed speech absorbs any turn waiting for dispatch
+            if (dispatchTimer.current) {
+              clearTimeout(dispatchTimer.current);
+              dispatchTimer.current = null;
+            }
             if (replying.current) abortReply();
           },
           onSpeechEnd: (ts) => {
-            if (!replying.current) {
-              speechEndAt.current = ts;
-              liveStt.current?.finalizeTurn();
-            }
+            userSpeaking.current = false;
+            speechEndAt.current = ts;
+            // Always commit — even mid-reply — so continuation speech never
+            // lingers in the provider's buffer and leaks into the next turn.
+            liveStt.current?.finalizeTurn();
           },
         },
       );
@@ -198,6 +304,12 @@ export default function PipelinePage() {
     if (!selections) return;
     setPartialUser(null);
     if (!text.trim()) return; // noise-only turn
+    // A new turn always kills any reply still in flight — this is what
+    // guarantees at most one agent voice at a time, even in race windows
+    // where barge-in didn't fire.
+    abortReply();
+    const player = livePlayer.current;
+    if (!player) return;
     const history: ChatMessage[] = [...messagesRef.current, { role: "user", content: text }];
     setMessages(history);
     replying.current = true;
@@ -205,8 +317,6 @@ export default function PipelinePage() {
 
     const abort = new AbortController();
     liveAbort.current = abort;
-    const player = new DecodedQueuePlayer();
-    livePlayer.current = player;
     const t0 = speechEndAt.current;
     player.onFirstAudio = () => {
       if (t0 !== null) {
@@ -233,23 +343,21 @@ export default function PipelinePage() {
         setError({ stage: "llm", message: err instanceof Error ? err.message : String(err) });
       }
     } finally {
-      if (livePlayer.current === player) {
-        player.close();
-        livePlayer.current = null;
-      }
-      if (!abort.signal.aborted) {
+      // Only reset state if this turn is still the active one (it may have
+      // been superseded by a barge-in or a newer turn).
+      if (liveAbort.current === abort) {
+        liveAbort.current = null;
         replying.current = false;
         if (liveStt.current) setLiveStatus("listening");
       }
     }
   }
 
-  /** Barge-in: user spoke while the agent was replying. Local, so instant. */
+  /** Kill the in-flight reply, if any: barge-in and new-turn takeover. */
   function abortReply() {
     liveAbort.current?.abort();
     liveAbort.current = null;
-    livePlayer.current?.close();
-    livePlayer.current = null;
+    livePlayer.current?.flush(); // stops audio instantly; player stays usable
     replying.current = false;
     if (partialReplyRef.current) {
       const interrupted = partialReplyRef.current;
@@ -267,6 +375,12 @@ export default function PipelinePage() {
     liveStt.current?.close();
     liveStt.current = null;
     replying.current = false;
+    if (dispatchTimer.current) {
+      clearTimeout(dispatchTimer.current);
+      dispatchTimer.current = null;
+    }
+    pendingTurn.current = null;
+    userSpeaking.current = false;
     setPartialUser(null);
     updatePartialReply(null);
     setLiveStatus("idle");
@@ -325,6 +439,9 @@ export default function PipelinePage() {
       setStage("llm");
       const llm = await chat(history, sel.llm);
       setTimings((t) => ({ ...t, llm: llm.timing }));
+      for (const name of llm.tools) {
+        recordTool({ id: `${name}-${++toolSeq.current}`, name, status: "done" });
+      }
       setMessages([...history, { role: "assistant", content: llm.text }]);
 
       current = "tts";
@@ -461,8 +578,15 @@ export default function PipelinePage() {
       )}
 
       {liveMode && <LatencyPanel entries={latency} />}
+      <ToolLog entries={toolLog} />
 
-      <Transcript messages={displayMessages} onReset={() => setMessages([])} />
+      <Transcript
+        messages={displayMessages}
+        onReset={() => {
+          setMessages([]);
+          setToolLog([]);
+        }}
+      />
     </main>
   );
 }
