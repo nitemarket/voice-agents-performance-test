@@ -151,6 +151,47 @@ Ephemeral-token/WebRTC direct connection is not implemented (out of scope for th
 
 The UI picks all of this up from the catalogs — no frontend changes needed.
 
+## Deploying to Google Cloud Run
+
+The repo ships a `Dockerfile` that builds the web app and serves it from the API server, so
+one Cloud Run service hosts everything (the frontend uses relative URLs, so same-origin just
+works — including the WebSockets). Cloud Run builds the image remotely; no local Docker
+needed.
+
+One-time setup: install the [gcloud CLI](https://cloud.google.com/sdk/docs/install),
+`gcloud auth login`, `gcloud config set project <your-project>`, and enable the APIs with
+`gcloud services enable run.googleapis.com cloudbuild.googleapis.com`.
+
+Deploy from the repo root:
+
+```bash
+gcloud run deploy voice-agent-lab \
+  --source . \
+  --region asia-southeast1 \
+  --allow-unauthenticated \
+  --timeout 3600 \
+  --memory 512Mi \
+  --max-instances 2 \
+  --set-env-vars "ACCESS_PASSWORD=pick-a-password,OPENAI_API_KEY=...,GEMINI_API_KEY=...,GROQ_API_KEY=...,ELEVENLABS_API_KEY=...,TAVILY_API_KEY=..."
+```
+
+Notes:
+
+- **Set `ACCESS_PASSWORD`** — `--allow-unauthenticated` makes the URL public, and the gate is
+  what stops strangers from spending your provider credits.
+- `--timeout 3600` is the per-request ceiling and applies to WebSocket connections — without
+  it, live sessions drop at the 5-minute default. 60 minutes is Cloud Run's max; the app
+  reconnects on the next Connect press.
+- `--region asia-southeast1` is Singapore; pick what's close to you. Latency to the model
+  providers (mostly US) dominates anyway.
+- Scale-to-zero means a cold start (a few seconds) on the first request after idle; the free
+  tier comfortably covers prototype usage at these settings.
+- For later deploys just rerun the same command. To keep keys out of your shell history, use
+  [Secret Manager](https://cloud.google.com/run/docs/configuring/services/secrets) with
+  `--set-secrets` instead of `--set-env-vars`.
+- Test the production build locally with `bun run build && cd server && bun src/index.ts`,
+  then open http://localhost:8787.
+
 ## Not yet built (deliberately)
 
 - Telephony ingress (e.g. Twilio Media Streams bridging G.711 into the same STS WebSocket) —

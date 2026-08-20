@@ -1,0 +1,7 @@
+node_modules
+web/dist
+server/.env
+.env
+.git
+.claude
+.DS_Store

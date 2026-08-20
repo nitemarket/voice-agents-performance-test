@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { serveStatic } from "hono/bun";
 import { config } from "./config";
 import { providersRoute } from "./routes/providers";
 import { sttRoute } from "./routes/stt";
@@ -37,6 +38,13 @@ app.onError((err, c) => {
   return c.json({ error: err.message }, 502);
 });
 
-console.log("API server listening on http://localhost:8787");
+// Production: serve the built web app (web/dist) from this server so a single
+// container hosts everything. In dev the folder doesn't exist and Vite serves
+// the frontend, so these fall through harmlessly.
+app.use("*", serveStatic({ root: "../web/dist" }));
+app.get("*", serveStatic({ path: "../web/dist/index.html" }));
 
-export default { port: 8787, fetch: app.fetch, websocket };
+const port = Number(process.env.PORT) || 8787;
+console.log(`API server listening on http://localhost:${port}`);
+
+export default { port, fetch: app.fetch, websocket };
