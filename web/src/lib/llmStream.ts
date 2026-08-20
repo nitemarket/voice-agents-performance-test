@@ -1,4 +1,5 @@
 import type { ChatMessage, Selection } from "./api";
+import { authHeaders } from "./auth";
 
 export type LlmStreamEvent =
   | { delta: string }
@@ -14,7 +15,7 @@ export async function* streamChat(
 ): AsyncGenerator<LlmStreamEvent> {
   const res = await fetch("/api/llm/stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ messages, ...sel }),
     signal,
   });

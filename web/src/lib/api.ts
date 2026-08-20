@@ -1,3 +1,5 @@
+import { authHeaders } from "./auth";
+
 export interface StageOption {
   id: string;
   label: string;
@@ -45,7 +47,7 @@ async function fail(res: Response): Promise<never> {
 }
 
 export async function fetchCatalog(): Promise<Catalog> {
-  const res = await fetch("/api/providers");
+  const res = await fetch("/api/providers", { headers: authHeaders() });
   if (!res.ok) await fail(res);
   return res.json();
 }
@@ -60,7 +62,7 @@ export async function transcribe(
   form.append("option", sel.option);
   form.append("audio", new File([audio], `utterance.${ext}`, { type: audio.type }));
   const t0 = performance.now();
-  const res = await fetch("/api/stt", { method: "POST", body: form });
+  const res = await fetch("/api/stt", { method: "POST", body: form, headers: authHeaders() });
   if (!res.ok) await fail(res);
   const json = await res.json();
   return { text: json.text, timing: { totalMs: performance.now() - t0, upstreamMs: json.ms } };
@@ -73,7 +75,7 @@ export async function chat(
   const t0 = performance.now();
   const res = await fetch("/api/llm", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ messages, ...sel }),
   });
   if (!res.ok) await fail(res);
@@ -93,7 +95,7 @@ export async function speak(
   const t0 = performance.now();
   const res = await fetch("/api/tts", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ text, ...sel }),
     signal,
   });

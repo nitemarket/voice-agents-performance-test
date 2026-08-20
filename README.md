@@ -90,6 +90,15 @@ Providers whose env key is missing are hidden from the UI automatically — you 
 single key. Note: `.env` is only read at server start, so restart `bun run dev` after
 changing keys (the file watcher does not pick it up).
 
+### Access gate (for public deployments)
+
+Set `ACCESS_PASSWORD` in the server environment and every `/api` route — including the
+WebSocket upgrades — requires it: HTTP requests via the `x-access-key` header, WebSockets via
+the `?key=` query param (browsers can't set WS headers). The web app shows an unlock screen on
+a 401 and remembers the password per browser (localStorage). Leave the variable empty for
+local development and the gate is disabled entirely. This is a prototype-grade shared secret:
+fine behind HTTPS for keeping strangers from burning your API credits, not real auth.
+
 ## API
 
 | Endpoint | Body | Returns |

@@ -1,4 +1,5 @@
 import { MicStream, type VadCallbacks } from "./audioStream";
+import { withAccessKey } from "./auth";
 
 // Live transcription session for the pipeline tab's hands-free mode: keeps the
 // mic and a server STT bridge open across turns; finalizeTurn() commits the
@@ -26,7 +27,7 @@ export function startLiveStt(
   return new Promise((resolve, reject) => {
     const proto = location.protocol === "https:" ? "wss" : "ws";
     const ws = new WebSocket(
-      `${proto}://${location.host}/api/stt/stream?provider=${encodeURIComponent(provider)}`,
+      withAccessKey(`${proto}://${location.host}/api/stt/stream?provider=${encodeURIComponent(provider)}`),
     );
     const mic = new MicStream();
     let live = false;

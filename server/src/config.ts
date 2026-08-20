@@ -5,4 +5,6 @@ export const config = {
   geminiKey: process.env.GEMINI_API_KEY || "",
   elevenKey: process.env.ELEVENLABS_API_KEY || "",
   tavilyKey: process.env.TAVILY_API_KEY || "",
+  // Shared-secret gate for all /api routes; empty = gate disabled (local dev).
+  accessPassword: process.env.ACCESS_PASSWORD || "",
 };

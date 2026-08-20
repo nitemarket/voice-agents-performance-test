@@ -1,3 +1,5 @@
+import { withAccessKey } from "./auth";
+
 export type StsServerMsg =
   | { type: "ready"; inputRate: number; outputRate: number; tools: string[] }
   | { type: "audio"; data: string }
@@ -20,7 +22,9 @@ export function connectSts(
   onClose: () => void,
 ): StsConnection {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const url = `${proto}://${location.host}/api/sts?provider=${encodeURIComponent(provider)}&model=${encodeURIComponent(model)}`;
+  const url = withAccessKey(
+    `${proto}://${location.host}/api/sts?provider=${encodeURIComponent(provider)}&model=${encodeURIComponent(model)}`,
+  );
   const ws = new WebSocket(url);
 
   ws.onmessage = (evt) => {

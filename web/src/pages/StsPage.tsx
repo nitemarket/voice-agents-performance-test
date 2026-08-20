@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ChatMessage } from "../lib/api";
+import { authHeaders } from "../lib/auth";
 import { connectSts, type StsConnection, type StsServerMsg } from "../lib/stsClient";
 import { MicStream, StreamPlayer } from "../lib/audioStream";
 import { Transcript } from "../components/Transcript";
@@ -43,7 +44,7 @@ export default function StsPage() {
   const turnCount = useRef(0);
 
   useEffect(() => {
-    fetch("/api/sts/providers")
+    fetch("/api/sts/providers", { headers: authHeaders() })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
       .then((cat: StsProvider[]) => {
         setCatalog(cat);
