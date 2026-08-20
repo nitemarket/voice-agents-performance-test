@@ -223,15 +223,38 @@ select:disabled {
   text-align: center;
 }
 
-.transcript-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+.transcript {
+  border: 1px solid #232733;
+  border-radius: 8px;
+  padding: 0.6rem 1rem;
+  margin-top: 0.5rem;
 }
 
-.transcript-header h2 {
-  font-size: 1rem;
+.transcript summary {
+  cursor: pointer;
+  font-size: 0.9rem;
   color: #9aa0ae;
+  user-select: none;
+}
+
+.transcript summary:hover {
+  color: #e6e8ee;
+}
+
+.transcript[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.transcript-count {
+  color: #6b7280;
+  font-size: 0.8rem;
+}
+
+.transcript-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
 }
 
 .reset {
